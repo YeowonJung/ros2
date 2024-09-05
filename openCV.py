@@ -1,32 +1,59 @@
+pip install opencv-python
+sudo apt install ros-<ros_distro>-cv-bridge ros-<ros_distro>-image-transport
+
+#!/usr/bin/env python3
+import rospy
 import cv2
 import numpy as np
+from cv_bridge import CvBridge
+from sensor_msgs.msg import Image
+from geometry_msgs.msg import Point
 
-# 이미지 읽기
-img = cv2.imread('fire_image.jpg')
+class FireDetectionNode:
+    def __init__(self):
+        rospy.init_node('fire_detection_node', anonymous=True)
 
-# 이미지에서 HSV로 변환
-hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+        self.bridge = CvBridge()
+        self.image_sub = rospy.Subscriber('/camera/rgb/image_raw', Image, self.image_callback)
+        self.coord_pub = rospy.Publisher('/fire_detection/coordinates', Point, queue_size=10)
 
-# 불꽃 색상 범위 설정 (예: 붉은 색상)
-lower_bound = np.array([0, 50, 50])
-upper_bound = np.array([10, 255, 255])
+    def image_callback(self, data):
+        # Convert the ROS image message to OpenCV format
+        cv_image = self.bridge.imgmsg_to_cv2(data, 'bgr8')
 
-# 색상 범위 내의 영역을 마스크로 만듦
-mask = cv2.inRange(hsv, lower_bound, upper_bound)
+        # Convert to HSV color space
+        hsv = cv2.cvtColor(cv_image, cv2.COLOR_BGR2HSV)
 
-# 불꽃의 윤곽선 찾기
-contours, _ = cv2.findContours(mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+        # Define the color range for detecting fire (red/yellow)
+        lower_bound = np.array([0, 50, 50])
+        upper_bound = np.array([10, 255, 255])
 
-# 윤곽선이 있을 경우, 중앙 좌표 계산
-for contour in contours:
-    if cv2.contourArea(contour) > 500:  # 작은 노이즈 제거
-        x, y, w, h = cv2.boundingRect(contour)
-        center_x = x + w // 2
-        center_y = y + h // 2
-        print(f"불꽃 중앙 좌표: x={center_x}, y={center_y}")
-        cv2.rectangle(img, (x, y), (x + w, y + h), (0, 255, 0), 2)
+        # Create mask
+        mask = cv2.inRange(hsv, lower_bound, upper_bound)
 
-# 결과 이미지 출력
-cv2.imshow('Fire Detection', img)
-cv2.waitKey(0)
-cv2.destroyAllWindows()
+        # Find contours
+        contours, _ = cv2.findContours(mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+
+        # Find the center of the fire-like region
+        for contour in contours:
+            if cv2.contourArea(contour) > 500:  # Ignore small areas (noise)
+                x, y, w, h = cv2.boundingRect(contour)
+                center_x = x + w // 2
+                center_y = y + h // 2
+
+                # Publish coordinates
+                fire_coords = Point()
+                fire_coords.x = center_x
+                fire_coords.y = center_y
+                fire_coords.z = 0  # Z-axis is unused in 2D detection
+                self.coord_pub.publish(fire_coords)
+
+                rospy.loginfo(f"Fire detected at: x={center_x}, y={center_y}")
+
+if __name__ == '__main__':
+    try:
+        node = FireDetectionNode()
+        rospy.spin()
+    except rospy.ROSInterruptException:
+        pass
+
