@@ -29,7 +29,7 @@ class ObjectAlignment(Node):
     def object_callback(self, msg):
         # fire_location 토픽에서 받은 객체의 x 좌표
         object_x = msg.x  # 객체의 x 좌표
-        
+
         # 객체와 카메라 중앙선이 일치하도록 로봇을 회전
         self.align_robot(object_x)
 
@@ -55,9 +55,17 @@ class ObjectAlignment(Node):
             # 객체가 중앙에 위치하면 일직선 상태로 인식
             if not self.is_aligned:
                 self.is_aligned = True
-                self.get_logger().info("Aligned with object. Moving forward for 10 seconds...")
+                self.get_logger().info("Aligned with object. Stopping briefly...")
+
+                # 모터 잠시 멈춤 (정렬 후 잠깐 멈춤)
+                left_motor_command.data = "forward 0"
+                right_motor_command.data = "forward 0"
+                self.left_motor_pub.publish(left_motor_command)
+                self.right_motor_pub.publish(right_motor_command)
+                sleep(1)  # 1초 동안 정지
 
                 # 10초 동안 직선 이동
+                self.get_logger().info("Moving forward for 10 seconds...")
                 left_motor_command.data = "forward 50"
                 right_motor_command.data = "forward 50"
                 self.left_motor_pub.publish(left_motor_command)
@@ -66,12 +74,11 @@ class ObjectAlignment(Node):
                 sleep(10)  # 10초 동안 직선 이동
 
                 # 10초 후 멈춤
+                self.get_logger().info("Stopping after 10 seconds.")
                 left_motor_command.data = "forward 0"
                 right_motor_command.data = "forward 0"
                 self.left_motor_pub.publish(left_motor_command)
                 self.right_motor_pub.publish(right_motor_command)
-
-                self.get_logger().info("Stopped after 10 seconds.")
 
         # 모터 명령을 발행
         self.left_motor_pub.publish(left_motor_command)
